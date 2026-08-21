@@ -1,0 +1,19 @@
+﻿<Application x:Class="WpfMaterialHello.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 1. 載入 Material Design 的預設控制項樣式 -->
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml" />
+
+                <!-- 2. 設定色彩主題 (BaseTheme可選 Light 或 Dark, PrimaryColor 決定主色調) -->
+                <materialDesign:BundledTheme BaseTheme="Light" 
+                                             PrimaryColor="Blue" 
+                                             SecondaryColor="Amber" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
