@@ -63,6 +63,9 @@ namespace WpfMaterialHello
             }
         }
 
+
+
+
         // --- INotifyPropertyChanged 標準實作 ---
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string propertyName = null)

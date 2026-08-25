@@ -92,8 +92,21 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Text="UART 接收數據 (RX)" FontWeight="Bold" FontSize="16" Margin="0,0,0,10" Grid.Row="0"/>
+                <Grid Grid.Row="0" Margin="0,0,0,10">
+                    <!-- 標題靠左對齊 -->
+                    <TextBlock Text="UART 接收數據 (RX)" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Left"/>
 
+                    <!-- 按鈕靠右對齊 (使用橫向 StackPanel) -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- 清除按鈕 -->
+                        <Button x:Name="ClearLogBtn" Content="清除" Style="{StaticResource MaterialDesignOutlinedButton}" 
+                                Margin="0,0,10,0" Click="ClearLogBtn_Click" Height="30" Padding="10,0"/>
+
+                        <!-- 存檔按鈕 -->
+                        <Button x:Name="SaveLogBtn" Content="儲存 Log" Style="{StaticResource MaterialDesignRaisedButton}" 
+                                Click="SaveLogBtn_Click" Height="30" Padding="10,0"/>
+                    </StackPanel>
+                </Grid>
                 <!-- 顯示 Log 的多行文字框 -->
                 <TextBox x:Name="UartLogTextBox"
                          Grid.Row="1"

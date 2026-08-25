@@ -11,6 +11,8 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Interop; // 必須引入這個，用來處理底層 Window Handle (HWND)
 using System.Windows.Threading;
+using System.IO;       // 負責檔案讀寫 (File.WriteAllText)
+using Microsoft.Win32; // 負責呼叫 Windows 內建的存檔視窗 (SaveFileDialog)
 
 namespace WpfMaterialHello
 {
@@ -246,6 +248,58 @@ namespace WpfMaterialHello
 
             return bytes;
         }
+
+// ---------------------------------------------------------
+        // 儲存 Log 按鈕事件
+        // ---------------------------------------------------------
+        private void SaveLogBtn_Click(object sender, RoutedEventArgs e)
+        {
+            // 1. 檢查是否有內容可以存檔
+            if (string.IsNullOrEmpty(UartLogTextBox.Text))
+            {
+                MessageBox.Show("目前沒有任何 Log 可以儲存！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // 2. 建立並設定存檔對話框
+            SaveFileDialog saveFileDialog = new SaveFileDialog();
+            saveFileDialog.Title = "儲存 UART 接收紀錄";
+            saveFileDialog.Filter = "文字檔案 (*.txt)|*.txt|所有檔案 (*.*)|*.*"; // 限定存檔類型
+            
+            // 預設檔名帶上當下時間，方便工程師管理檔案 (例如: UART_Log_20260824_173000.txt)
+            saveFileDialog.FileName = $"UART_Log_{DateTime.Now:yyyyMMdd_HHmmss}.txt"; 
+
+            // 3. 顯示對話框，如果使用者按下了「存檔」
+            if (saveFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    // 使用一行程式碼，將 TextBox 內的所有文字寫入使用者指定的檔案路徑
+                    File.WriteAllText(saveFileDialog.FileName, UartLogTextBox.Text);
+                    
+                    MessageBox.Show($"Log 已成功儲存至：\n{saveFileDialog.FileName}", "儲存成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"儲存檔案時發生錯誤：\n{ex.Message}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+        // ---------------------------------------------------------
+        // 清除 Log 按鈕事件
+        // ---------------------------------------------------------
+        private void ClearLogBtn_Click(object sender, RoutedEventArgs e)
+        {
+            // 清空畫面上的文字
+            UartLogTextBox.Clear();
+
+            // 為了確保 Buffer 的資料也乾淨，建議一併清空我們在背景使用的 StringBuilder
+            lock (_bufferLock)
+            {
+                _rxBuffer.Clear();
+            }
+        }
+
 
     }
 }
