@@ -1,13 +1,18 @@
-﻿using System.Collections.ObjectModel;
+﻿using System;
+using System.Windows;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO.Ports;
 using System.Runtime.CompilerServices;
-using System.Linq; // 為了使用 Contains 語法
+using System.Text.RegularExpressions;
+using System.Linq;
+
 
 namespace WpfMaterialHello
 {
     public class MainViewModel : INotifyPropertyChanged
     {
+
         // 【關鍵武器 1】：ObservableCollection
         // 它就像是一個會自動廣播的 List。當你對它 Add 或 Clear 時，畫面會自動更新！
         public ObservableCollection<string> AvailablePorts { get; set; }
@@ -22,6 +27,20 @@ namespace WpfMaterialHello
                 _selectedPort = value;
                 OnPropertyChanged();
             }
+        }
+
+
+        // 【新增】：Baud Rate 清單與選擇狀態
+        public ObservableCollection<int> BaudRates { get; set; } = new ObservableCollection<int>
+        {
+            9600, 19200, 38400, 57600, 115200, 256000, 460800, 921600
+        };
+
+        private int _selectedBaudRate = 256000; // 預設給 TPMS 用的 256000
+        public int SelectedBaudRate
+        {
+            get { return _selectedBaudRate; }
+            set { _selectedBaudRate = value; OnPropertyChanged(); }
         }
 
         // 建構子
@@ -58,12 +77,60 @@ namespace WpfMaterialHello
             }
             else
             {
-                AvailablePorts.Add("未偵測到任何 COM Port");
+                AvailablePorts.Add("未偵測COM Port");
                 SelectedPort = AvailablePorts[0];
             }
         }
 
+        // 【新增】：用來存放所有解析出來的 TPMS 裝置，UI 會自動把這個清單畫成卡片
+        public ObservableCollection<TpmsDevice> Devices { get; set; } = new ObservableCollection<TpmsDevice>();
 
+        // 【新增】：封包解析函式
+        public void ParseUARTString(string line)
+        {
+            // 放寬過濾條件，只要有 Pressure (Format 1) 或 Revolution (Format 2) 就處理
+            if (!line.Contains("Pressure:") && !line.Contains("Revolution:")) return;
+
+            try
+            {
+                var macMatch = Regex.Match(line, @"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})", RegexOptions.IgnoreCase);
+                if (!macMatch.Success) return;
+
+                string mac = macMatch.Groups[1].Value.ToUpper();
+                var device = Devices.FirstOrDefault(d => d.Mac == mac);
+
+                if (device == null)
+                {
+                    device = new TpmsDevice { Mac = mac };
+                    App.Current.Dispatcher.Invoke(() => Devices.Add(device));
+                }
+
+                // 更新時間
+                device.Time = DateTime.Now.ToString("HH:mm:ss");
+
+                // 解析 Format 1: Pressure, Temp, Voltage, Mileage
+                var pMatch = Regex.Match(line, @"Pressure:\s*(\d+)");
+                var tMatch = Regex.Match(line, @"Temperature:\s*(-?\d+)");
+                var vMatch = Regex.Match(line, @"Voltage:\s*(\d+)");
+                var mMatch = Regex.Match(line, @"Mileage:\s*(\d+)");
+
+                if (pMatch.Success) device.Pressure = pMatch.Groups[1].Value;
+                if (tMatch.Success) device.Temp = tMatch.Groups[1].Value;
+                if (vMatch.Success) device.Voltage = vMatch.Groups[1].Value;
+                if (mMatch.Success) device.Mileage = mMatch.Groups[1].Value;
+
+                // 解析 Format 2: Revolution, Footprint
+                var revMatch = Regex.Match(line, @"Revolution:\s*(\d+)");
+                var footMatch = Regex.Match(line, @"Footprint:\s*(\d+)");
+
+                if (revMatch.Success) device.Revolution = revMatch.Groups[1].Value;
+                if (footMatch.Success) device.Footprint = footMatch.Groups[1].Value;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"解析失敗: {ex.Message}");
+            }
+        }
 
 
         // --- INotifyPropertyChanged 標準實作 ---

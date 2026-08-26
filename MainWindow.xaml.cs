@@ -13,6 +13,7 @@ using System.Windows.Interop; // 必須引入這個，用來處理底層 Window 
 using System.Windows.Threading;
 using System.IO;       // 負責檔案讀寫 (File.WriteAllText)
 using Microsoft.Win32; // 負責呼叫 Windows 內建的存檔視窗 (SaveFileDialog)
+using System;
 
 namespace WpfMaterialHello
 {
@@ -81,9 +82,9 @@ namespace WpfMaterialHello
         // 按鈕點擊事件
         private void ActionBtn_Click(object sender, RoutedEventArgs e)
         {
-            // 如果 SerialPort 尚未建立或尚未開啟，則執行【連線】邏輯
             if (_serialPort == null || !_serialPort.IsOpen)
             {
+                // 【執行連線】
                 string selectedPort = _viewModel.SelectedPort;
                 if (string.IsNullOrWhiteSpace(selectedPort) || selectedPort.Contains("未偵測"))
                 {
@@ -93,16 +94,16 @@ namespace WpfMaterialHello
 
                 try
                 {
-                    // 實例化 SerialPort (可以依需求修改 BaudRate)
-                    _serialPort = new SerialPort(selectedPort, 115200, Parity.None, 8, StopBits.One);
+                    // 【修正】：將 115200 替換為 _viewModel.SelectedBaudRate
+                    _serialPort = new SerialPort(selectedPort, _viewModel.SelectedBaudRate, Parity.None, 8, StopBits.One);
+
                     _serialPort.DataReceived += SerialPort_DataReceived;
-
                     _serialPort.Open();
-                    _uiUpdateTimer.Start(); // 開始定時更新 UI
+                    _uiUpdateTimer.Start();
 
-                    // 更新 UI 狀態
-                    ActionBtn.Content = "關閉連線";
-                    PortComboBox.IsEnabled = false; // 連線中不允許更改 Port
+                    // 修改按鈕內的文字 (不影響 Icon)
+                    ActionBtnText.Text = "關閉連線";
+                    PortComboBox.IsEnabled = false;
                     UartLogTextBox.AppendText($"--- 已連線至 {selectedPort} ---\n");
                 }
                 catch (Exception ex)
@@ -112,58 +113,15 @@ namespace WpfMaterialHello
             }
             else
             {
-                // 如果已經連線，則執行【發送指令】或【斷線】邏輯
-                string inputText = InputTextBox.Text;
+                // 【執行斷線】
+                _uiUpdateTimer.Stop();
+                _serialPort.DataReceived -= SerialPort_DataReceived;
+                _serialPort.Close();
 
-                if (!string.IsNullOrWhiteSpace(inputText))
-                {
-                    bool isHexMode = (HexModeToggle.IsChecked == true);
-
-                    // 產生毫秒等級的時間戳記
-                    string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
-
-                    if (isHexMode)
-                    {
-                        try
-                        {
-                            // 1. 呼叫剛剛寫的副程式進行轉換
-                            byte[] hexBytes = ConvertHexStringToByteArray(inputText);
-
-                            // 2. 透過 SerialPort 送出 Byte 陣列
-                            _serialPort.Write(hexBytes, 0, hexBytes.Length);
-
-                            // 3. UI 顯示 (利用 BitConverter 將陣列轉回漂亮的帶 '-' 字串，並替換成空白)
-                            string displayHex = BitConverter.ToString(hexBytes).Replace("-", " ");
-                            UartLogTextBox.AppendText($"[{timeStamp} TX Hex]: {displayHex}\n");
-                            UartLogTextBox.ScrollToEnd();
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show($"Hex 格式轉換失敗，請確認輸入是否正確 (0-9, A-F)。\n錯誤: {ex.Message}", "格式錯誤");
-                            return; // 轉換失敗就不清除輸入框
-                        }
-                    }
-                    else
-                    {
-                        // 一般字串發送 (自動補上換行符號)
-                        _serialPort.WriteLine(inputText);
-                        UartLogTextBox.AppendText($"[{timeStamp} TX]: {inputText}\n");
-                        UartLogTextBox.ScrollToEnd();
-                    }
-
-                    InputTextBox.Text = string.Empty;
-                }
-                else
-                {
-                    // 斷線邏輯保持不變...
-                    _uiUpdateTimer.Stop();
-                    _serialPort.DataReceived -= SerialPort_DataReceived;
-                    _serialPort.Close();
-
-                    ActionBtn.Content = "連線並發送";
-                    PortComboBox.IsEnabled = true;
-                    UartLogTextBox.AppendText($"--- 已中斷連線 ---\n");
-                }
+                // 恢復按鈕文字
+                ActionBtnText.Text = "開啟連線";
+                PortComboBox.IsEnabled = true;
+                UartLogTextBox.AppendText($"--- 已中斷連線 ---\n");
             }
         }
         // 相當於 RX Interrupt (注意：這是在背景執行緒執行的！)
@@ -218,38 +176,38 @@ namespace WpfMaterialHello
             // 如果有抽取出完整的字串，就更新到 UI 的 TextBox 上
             if (!string.IsNullOrEmpty(dataToDisplay))
             {
-                // 取得當前時間
-                string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
+                // 【優化】：將字串依換行符號切開，逐行交給大腦解析，確保不漏接任何一顆輪胎的封包
+                string[] lines = dataToDisplay.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                // 判斷是否開啟「顯示時間」
+                bool isShowTime = (ShowTimeToggle.IsChecked == true);
 
-                // 在輸出的最前面加上 [時間 RX]:
-                UartLogTextBox.AppendText($"[{timeStamp} RX]: {dataToDisplay}");
+                // 取得當下的時間
+                string timeStamp = DateTime.Now.ToString("HH:mm:ss.ff");
+
+
+                foreach (string line in lines)
+                {
+                    _viewModel.ParseUARTString(line);
+
+                    if (isShowTime)
+                    {
+                        UartLogTextBox.AppendText($"[{timeStamp}] {line}\n");
+                    }
+                    else
+                    {
+                        UartLogTextBox.AppendText($"{line}\n");
+                    }
+                }
+
+
+
                 UartLogTextBox.ScrollToEnd();
             }
         }
         // 將 Hex 字串轉換為 Byte 陣列的工具函式
-        private byte[] ConvertHexStringToByteArray(string hexString)
-        {
-            // 1. 移除所有空白，方便使用者貼上 "01 0A 0B" 這種格式
-            hexString = hexString.Replace(" ", "");
+  
 
-            // 2. 防呆：如果長度是奇數，在前面補 0 (例如輸入 "A" 變成 "0A")
-            if (hexString.Length % 2 != 0)
-            {
-                hexString = "0" + hexString;
-            }
-
-            // 3. 每兩個字元切一刀，轉換成 byte
-            byte[] bytes = new byte[hexString.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                // Convert.ToByte(字串, 16進位)
-                bytes[i] = Convert.ToByte(hexString.Substring(i * 2, 2), 16);
-            }
-
-            return bytes;
-        }
-
-// ---------------------------------------------------------
+        // ---------------------------------------------------------
         // 儲存 Log 按鈕事件
         // ---------------------------------------------------------
         private void SaveLogBtn_Click(object sender, RoutedEventArgs e)

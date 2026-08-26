@@ -3,88 +3,134 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-        Title="Initial Model" Height="450" Width="1200"
+        Title="Initial Model" Height="600" Width="1300"
         Background="{DynamicResource MaterialDesignPaper}"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         Loaded="Window_Loaded">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
     <Grid>
-        <!-- 1. 定義網格的欄位 -->
+        <!-- 定義網格的欄位 -->
         <Grid.ColumnDefinitions>
-            <!-- 左欄：固定寬度 350，用來放控制項 -->
-            <ColumnDefinition Width="350"/>
-            <!-- 右欄：寬度設為 "*" (星號)，代表填滿剩餘的所有空間 -->
+            <!-- 左欄：放寬一點到 320，讓大字體卡片有呼吸空間 -->
+            <ColumnDefinition Width="320"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <!-- 1. 放在底層的 Logo 圖片 -->
-        <!-- HorizontalAlignment="Right" 與 VerticalAlignment="Bottom" 把它釘在右下角 -->
-        <!-- Margin="0,0,15,15" 讓它距離右邊和下面各有 15 像素的留白 -->
-        <Image Source="logo.png"
-               Grid.ColumnSpan="2"
-               Width="80" 
-               Height="80" 
-               HorizontalAlignment="Right" 
-               VerticalAlignment="Bottom" 
-               Margin="0,0,15,15" 
-               Opacity="0.3" />
-        <!-- 註解必須放在標籤外面，StackPanel 負責垂直置中排列 -->
-        <StackPanel Grid.Column="0" Margin="30" VerticalAlignment="Center">
-            <!-- 新增：下拉式選單 (ComboBox) -->
-            <ComboBox x:Name="PortComboBox"
-                  Style="{StaticResource MaterialDesignFloatingHintComboBox}"
-                  materialDesign:HintAssist.Hint="COM Port"
-                  Margin="0,0,0,20" 
-                  FontSize="16"
-                  ItemsSource="{Binding AvailablePorts}" 
-                  SelectedItem="{Binding SelectedPort}">
-            </ComboBox>
 
-            <!-- 新增：Toggle 開關與文字標籤 (橫向排列) -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
-                <!-- 開關左側的說明文字 -->
-                <TextBlock Text="Hex Mode：" 
-                       VerticalAlignment="Center" 
-                       FontSize="15" 
-                       Margin="0,0,10,0"/>
+        <!-- 背景 Logo -->
+        <Image Source="logo.png" Grid.ColumnSpan="2" Width="120" Height="120" 
+               HorizontalAlignment="Right" VerticalAlignment="Bottom" 
+               Margin="0,0,5,8" Opacity="0.7" />
 
-                <!-- Toggle 開關本身 -->
-                <ToggleButton x:Name="HexModeToggle"
-                          Style="{StaticResource MaterialDesignSwitchToggleButton}"/>
-            </StackPanel>
-            <!-- 1. TextBox (輸入框) -->
-            <TextBox x:Name="InputTextBox"
-                 Style="{StaticResource MaterialDesignFloatingHintTextBox}"
-                 materialDesign:HintAssist.Hint="請輸入測試文字"
-                 Margin="0,0,0,30" 
-                 FontSize="16"/>
+        <!-- ========================================== -->
+        <!-- 左側：控制面板 + 動態卡片區 (指定在 Grid.Column="0") -->
+        <!-- ========================================== -->
+        <!-- 我們再用一個 Grid 把左邊切成上下兩塊 -->
+        <Grid Grid.Column="0" Margin="20,30,10,30">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <!-- 負責放控制元件 -->
+                <RowDefinition Height="*"/>
+                <!-- 剩下的空間全給卡片滾動區 -->
+            </Grid.RowDefinitions>
 
-            <!-- 2. 帶有圖示的 Button -->
-            <Button x:Name="ActionBtn"
-                Style="{StaticResource MaterialDesignRaisedButton}"
-                Click="ActionBtn_Click"
-                Margin="10,-10,50,5"
-                Height="25" Width="120">
-                <!-- 注意：這裡我們不寫 Content="字串"，而是把內容寫在標籤裡面 -->
+            <!-- 上半部：控制面板 -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                    <ComboBox x:Name="PortComboBox" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
+                              materialDesign:HintAssist.Hint="COM Port"
+                              Width="140" Margin="0,0,20,0" FontSize="16"
+                              ItemsSource="{Binding AvailablePorts}" SelectedItem="{Binding SelectedPort}"/>
 
-                <!-- 使用橫向排列的 StackPanel -->
-                <StackPanel Orientation="Horizontal">
-
-                    <!-- 內建的向量圖示，Kind 屬性決定顯示哪個圖 -->
-                    <materialDesign:PackIcon Kind="SerialPort" 
-                                         Width="24" Height="24" 
-                                         Margin="0,0,8,0" 
-                                         VerticalAlignment="Center"/>
-
-                    <!-- 原本的文字 -->
-                    <TextBlock Text="連線" 
-                           VerticalAlignment="Center" 
-                           FontSize="16"/>
+                    <ComboBox x:Name="BaudRateComboBox" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
+                              materialDesign:HintAssist.Hint="Baud Rate"
+                              Width="110" FontSize="16"
+                              ItemsSource="{Binding BaudRates}" SelectedItem="{Binding SelectedBaudRate}"/>
                 </StackPanel>
 
-            </Button>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                    <TextBlock Text="顯示時間：" VerticalAlignment="Center" FontSize="16" Margin="0,0,10,0"/>
+                    <ToggleButton x:Name="ShowTimeToggle" Style="{StaticResource MaterialDesignSwitchToggleButton}"/>
+                    
+                    <Button x:Name="ActionBtn" Style="{StaticResource MaterialDesignRaisedButton}"
+                       Click="ActionBtn_Click" Height="40" Margin="10,10,10,5">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="SerialPort" Width="24" Height="24" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ActionBtnText" Text="開啟連線" VerticalAlignment="Center" FontSize="14"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
 
+ 
+                <!-- 分隔線 -->
+                <Separator Margin="0,10,0,10"/>
+            </StackPanel>
 
+            <!-- 下半部：TPMS 動態生成的卡片區 -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Devices}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <!-- 改為直向堆疊 -->
+                            <StackPanel Orientation="Vertical"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
 
-        </StackPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <materialDesign:Card Margin="0,0,5,15" Padding="15" UniformCornerRadius="8">
+                                <StackPanel>
+                                    <!-- 標題列：MAC 位址 + 電池低電壓告警圖示 -->
+                                    <Grid Margin="0,0,0,15">
+                                        <TextBlock Text="{Binding Mac, StringFormat='ID: {0}'}" FontWeight="Bold" FontSize="16" HorizontalAlignment="Left"/>
+
+                                        <!-- 當 IsLowVoltage 為 True 時才會顯示這個紅色警告 -->
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" 
+                                                    Visibility="{Binding IsLowVoltage, Converter={StaticResource BoolToVis}}">
+                                            <materialDesign:PackIcon Kind="BatteryAlert" Foreground="Red" Width="20" Height="20" VerticalAlignment="Center"/>
+                                            <TextBlock Text="電壓過低" Foreground="Red" FontSize="12" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- 大字體數值區：胎壓、溫度、里程、荷重 -->
+                                    <Grid Margin="0,0,0,5">
+                                        <TextBlock Text="胎壓" FontSize="16" VerticalAlignment="Bottom" Foreground="Gray" Margin="0,0,0,3"/>
+                                        <TextBlock Text="{Binding Pressure, StringFormat='{}{0} kPa'}" FontSize="28" Foreground="#007aff" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,5">
+                                        <TextBlock Text="溫度" FontSize="16" VerticalAlignment="Bottom" Foreground="Gray" Margin="0,0,0,3"/>
+                                        <TextBlock Text="{Binding Temp, StringFormat='{}{0} °C'}" FontSize="28" Foreground="#4cd964" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,5">
+                                        <TextBlock Text="里程" FontSize="16" VerticalAlignment="Bottom" Foreground="Gray" Margin="0,0,0,3"/>
+                                        <TextBlock Text="{Binding Mileage, StringFormat='{}{0} km'}" FontSize="28" Foreground="#9c27b0" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,15">
+                                        <TextBlock Text="荷重" FontSize="16" VerticalAlignment="Bottom" Foreground="Gray" Margin="0,0,0,3"/>
+                                        <TextBlock Text="{Binding EstimatedLoad, StringFormat='{}{0} kg'}" FontSize="28" Foreground="#ff5722" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                    </Grid>
+
+                                    <!-- 底部資訊：顯示原始的週期與印痕時間供 Debug 參考 -->
+                                    <Separator Margin="0,0,0,10"/>
+                                    <Grid>
+                                        <TextBlock Text="{Binding Revolution, StringFormat='週期: {0} µs'}" FontSize="11" Foreground="Gray" HorizontalAlignment="Left"/>
+                                        <TextBlock Text="{Binding Footprint, StringFormat='印痕: {0} µs'}" FontSize="11" Foreground="Gray" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding Time, StringFormat='更新: {0}'}" FontSize="12" Foreground="DarkGray" HorizontalAlignment="Right" Margin="0,5,0,0"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            
+        </Grid>
+
+        <!-- ========================================== -->
+        <!-- 右側：Raw Log 顯示區 (指定在 Grid.Column="1") -->
+        <!-- ========================================== -->
         <materialDesign:Card Grid.Column="1" Margin="10,30,30,30" Padding="15" UniformCornerRadius="8">
             <Grid>
                 <Grid.RowDefinitions>
@@ -92,21 +138,17 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
+                <!-- 標題與按鈕區 -->
                 <Grid Grid.Row="0" Margin="0,0,0,10">
-                    <!-- 標題靠左對齊 -->
                     <TextBlock Text="UART 接收數據 (RX)" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Left"/>
-
-                    <!-- 按鈕靠右對齊 (使用橫向 StackPanel) -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <!-- 清除按鈕 -->
                         <Button x:Name="ClearLogBtn" Content="清除" Style="{StaticResource MaterialDesignOutlinedButton}" 
                                 Margin="0,0,10,0" Click="ClearLogBtn_Click" Height="30" Padding="10,0"/>
-
-                        <!-- 存檔按鈕 -->
                         <Button x:Name="SaveLogBtn" Content="儲存 Log" Style="{StaticResource MaterialDesignRaisedButton}" 
                                 Click="SaveLogBtn_Click" Height="30" Padding="10,0"/>
                     </StackPanel>
                 </Grid>
+
                 <!-- 顯示 Log 的多行文字框 -->
                 <TextBox x:Name="UartLogTextBox"
                          Grid.Row="1"
@@ -117,7 +159,5 @@
                          materialDesign:HintAssist.Hint="等待接收資料..."/>
             </Grid>
         </materialDesign:Card>
-
-
     </Grid>
 </Window>
