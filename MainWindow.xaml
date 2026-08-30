@@ -53,12 +53,13 @@
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
                     <TextBlock Text="顯示時間：" VerticalAlignment="Center" FontSize="16" Margin="0,0,10,0"/>
                     <ToggleButton x:Name="ShowTimeToggle" Style="{StaticResource MaterialDesignSwitchToggleButton}"/>
-                    
+
                     <Button x:Name="ActionBtn" Style="{StaticResource MaterialDesignRaisedButton}"
-                       Click="ActionBtn_Click" Height="40" Margin="10,10,10,5">
+                       Command="{Binding ToggleConnectionCommand}" Height="40" Margin="10,10,10,5">
                         <StackPanel Orientation="Horizontal">
                             <materialDesign:PackIcon Kind="SerialPort" Width="24" Height="24" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="ActionBtnText" Text="開啟連線" VerticalAlignment="Center" FontSize="14"/>
+                            <!-- 移除 x:Name="ActionBtnText"，改用 Text="{Binding ActionBtnText}" -->
+                            <TextBlock Text="{Binding ActionBtnText}" VerticalAlignment="Center" FontSize="14"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -142,10 +143,11 @@
                 <Grid Grid.Row="0" Margin="0,0,0,10">
                     <TextBlock Text="UART 接收數據 (RX)" FontWeight="Bold" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- 移除 Click，改為 Command -->
                         <Button x:Name="ClearLogBtn" Content="清除" Style="{StaticResource MaterialDesignOutlinedButton}" 
-                                Margin="0,0,10,0" Click="ClearLogBtn_Click" Height="30" Padding="10,0"/>
+                                Margin="0,0,10,0" Command="{Binding ClearLogCommand}" Height="30" Padding="10,0"/>
                         <Button x:Name="SaveLogBtn" Content="儲存 Log" Style="{StaticResource MaterialDesignRaisedButton}" 
-                                Click="SaveLogBtn_Click" Height="30" Padding="10,0"/>
+                                Command="{Binding SaveLogCommand}" Height="30" Padding="10,0"/>
                     </StackPanel>
                 </Grid>
 

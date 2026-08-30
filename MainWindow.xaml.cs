@@ -1,19 +1,20 @@
-﻿using System.IO.Ports; //
+﻿using Microsoft.Win32; // 負責呼叫 Windows 內建的存檔視窗 (SaveFileDialog)
+using System;
+using System.IO;       // 負責檔案讀寫 (File.WriteAllText)
+using System.IO.Ports; //
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop; // 必須引入這個，用來處理底層 Window Handle (HWND)
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-using System.Windows.Interop; // 必須引入這個，用來處理底層 Window Handle (HWND)
 using System.Windows.Threading;
-using System.IO;       // 負責檔案讀寫 (File.WriteAllText)
-using Microsoft.Win32; // 負責呼叫 Windows 內建的存檔視窗 (SaveFileDialog)
-using System;
 
 namespace WpfMaterialHello
 {
@@ -38,6 +39,11 @@ namespace WpfMaterialHello
             // 將大腦實例化，並裝進 DataContext 接通綁定通道
             _viewModel = new MainViewModel();
             this.DataContext = _viewModel;
+            // --- 訂閱大腦發出的 Command 事件 ---
+            _viewModel.OnToggleConnectionRequested += ExecuteToggleConnection;
+            _viewModel.OnClearLogRequested += ExecuteClearLog;
+            _viewModel.OnSaveLogRequested += ExecuteSaveLog;
+
             // 初始化 UI 更新定時器 (設定為每 500 毫秒觸發一次)
             _uiUpdateTimer = new DispatcherTimer();
             _uiUpdateTimer.Interval = TimeSpan.FromMilliseconds(500);
@@ -80,7 +86,7 @@ namespace WpfMaterialHello
         }        // 獨立出一個方法來載入 COM Port，方便以後按下「重新整理」按鈕時也可以呼叫
 
         // 按鈕點擊事件
-        private void ActionBtn_Click(object sender, RoutedEventArgs e)
+        private void ExecuteToggleConnection()
         {
             if (_serialPort == null || !_serialPort.IsOpen)
             {
@@ -102,7 +108,7 @@ namespace WpfMaterialHello
                     _uiUpdateTimer.Start();
 
                     // 修改按鈕內的文字 (不影響 Icon)
-                    ActionBtnText.Text = "關閉連線";
+                    _viewModel.ActionBtnText = "關閉連線";
                     PortComboBox.IsEnabled = false;
                     UartLogTextBox.AppendText($"--- 已連線至 {selectedPort} ---\n");
                 }
@@ -119,7 +125,7 @@ namespace WpfMaterialHello
                 _serialPort.Close();
 
                 // 恢復按鈕文字
-                ActionBtnText.Text = "開啟連線";
+                _viewModel.ActionBtnText = "開啟連線";
                 PortComboBox.IsEnabled = true;
                 UartLogTextBox.AppendText($"--- 已中斷連線 ---\n");
             }
@@ -173,7 +179,6 @@ namespace WpfMaterialHello
             }
 
             // 如果有抽取出完整的字串，就更新到 UI 的 TextBox 上
-            // 如果有抽取出完整的字串，就更新到 UI 的 TextBox 上
             if (!string.IsNullOrEmpty(dataToDisplay))
             {
                 // 【優化】：將字串依換行符號切開，逐行交給大腦解析，確保不漏接任何一顆輪胎的封包
@@ -205,37 +210,64 @@ namespace WpfMaterialHello
             }
         }
         // 將 Hex 字串轉換為 Byte 陣列的工具函式
-  
+
 
         // ---------------------------------------------------------
         // 儲存 Log 按鈕事件
         // ---------------------------------------------------------
-        private void SaveLogBtn_Click(object sender, RoutedEventArgs e)
+        private void ExecuteSaveLog()
         {
-            // 1. 檢查是否有內容可以存檔
             if (string.IsNullOrEmpty(UartLogTextBox.Text))
             {
-                MessageBox.Show("目前沒有任何 Log 可以儲存！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("目前沒有任何資料可以儲存！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            // 2. 建立並設定存檔對話框
-            SaveFileDialog saveFileDialog = new SaveFileDialog();
-            saveFileDialog.Title = "儲存 UART 接收紀錄";
-            saveFileDialog.Filter = "文字檔案 (*.txt)|*.txt|所有檔案 (*.*)|*.*"; // 限定存檔類型
-            
-            // 預設檔名帶上當下時間，方便工程師管理檔案 (例如: UART_Log_20260824_173000.txt)
-            saveFileDialog.FileName = $"UART_Log_{DateTime.Now:yyyyMMdd_HHmmss}.txt"; 
+            SaveFileDialog saveFileDialog = new SaveFileDialog
+            {
+                Title = "匯出 CSV 測試數據",
+                Filter = "CSV 檔案 (*.csv)|*.csv",
+                FileName = $"TPMS_Data_{DateTime.Now:yyyyMMdd_HHmmss}.csv"
+            };
 
-            // 3. 顯示對話框，如果使用者按下了「存檔」
             if (saveFileDialog.ShowDialog() == true)
             {
                 try
                 {
-                    // 使用一行程式碼，將 TextBox 內的所有文字寫入使用者指定的檔案路徑
-                    File.WriteAllText(saveFileDialog.FileName, UartLogTextBox.Text);
-                    
-                    MessageBox.Show($"Log 已成功儲存至：\n{saveFileDialog.FileName}", "儲存成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                    StringBuilder csv = new StringBuilder();
+                    // 加入 CSV 標題列 (特意將 Format 1 與 Format 2 的欄位對齊)
+                    csv.AppendLine("Time,MAC,Pressure(kPa),Temp(C),Voltage(mV),Mileage(km),Revolution(us),Footprint(us),Cnt,RSSI(dBm)");
+
+                    // 逐行讀取目前的 Log 視窗
+                    string[] lines = UartLogTextBox.Text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                    foreach (string line in lines)
+                    {
+                        // 忽略連線狀態等非數據行
+                        if (!line.Contains("ec:")) continue;
+
+                        // 擷取通用欄位
+                        string time = Regex.Match(line, @"\[(.*?)\]").Groups[1].Value;
+                        string mac = Regex.Match(line, @"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})", RegexOptions.IgnoreCase).Value;
+                        string cnt = Regex.Match(line, @"Cnt:\s*(\d+)").Groups[1].Value;
+                        string rssi = Regex.Match(line, @"(-\d+)\s*dbm", RegexOptions.IgnoreCase).Groups[1].Value;
+
+                        // 擷取 Format 1 欄位
+                        string pressure = Regex.Match(line, @"Pressure:\s*(\d+)").Groups[1].Value;
+                        string temp = Regex.Match(line, @"Temperature:\s*(-?\d+)").Groups[1].Value;
+                        string voltage = Regex.Match(line, @"Voltage:\s*(\d+)").Groups[1].Value;
+                        string mileage = Regex.Match(line, @"Mileage:\s*(\d+)").Groups[1].Value;
+
+                        // 擷取 Format 2 欄位
+                        string rev = Regex.Match(line, @"Revolution:\s*(\d+)").Groups[1].Value;
+                        string foot = Regex.Match(line, @"Footprint:\s*(\d+)").Groups[1].Value;
+
+                        // 組裝單列，Format 1 沒有的週期資料會自動留空，反之亦然
+                        csv.AppendLine($"{time},{mac},{pressure},{temp},{voltage},{mileage},{rev},{foot},{cnt},{rssi}");
+                    }
+
+                    File.WriteAllText(saveFileDialog.FileName, csv.ToString());
+                    MessageBox.Show($"CSV 已成功儲存至：\n{saveFileDialog.FileName}", "完成", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
@@ -246,7 +278,7 @@ namespace WpfMaterialHello
         // ---------------------------------------------------------
         // 清除 Log 按鈕事件
         // ---------------------------------------------------------
-        private void ClearLogBtn_Click(object sender, RoutedEventArgs e)
+        private void ExecuteClearLog()
         {
             // 清空畫面上的文字
             UartLogTextBox.Clear();

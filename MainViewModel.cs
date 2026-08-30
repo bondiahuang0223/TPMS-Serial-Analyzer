@@ -1,11 +1,12 @@
 ﻿using System;
-using System.Windows;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO.Ports;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using System.Linq;
+using System.Windows;
+using System.Windows.Input;
 
 
 namespace WpfMaterialHello
@@ -49,6 +50,11 @@ namespace WpfMaterialHello
             // 初始化集合
             AvailablePorts = new ObservableCollection<string>();
             RefreshPorts(); // 啟動時先抓一次
+
+            // 將 Command 綁定到對應的事件發送器
+            ToggleConnectionCommand = new RelayCommand(_ => OnToggleConnectionRequested?.Invoke());
+            ClearLogCommand = new RelayCommand(_ => OnClearLogRequested?.Invoke());
+            SaveLogCommand = new RelayCommand(_ => OnSaveLogRequested?.Invoke());
         }
 
         // 負責更新 COM Port 清單的核心邏輯
@@ -81,6 +87,24 @@ namespace WpfMaterialHello
                 SelectedPort = AvailablePorts[0];
             }
         }
+
+        // --- MVVM Command 與 UI 狀態綁定 ---
+        private string _actionBtnText = "開啟連線";
+        public string ActionBtnText
+        {
+            get => _actionBtnText;
+            set { _actionBtnText = value; OnPropertyChanged(); }
+        }
+
+        // 定義讓 UI 綁定的按鈕命令
+        public ICommand ToggleConnectionCommand { get; }
+        public ICommand ClearLogCommand { get; }
+        public ICommand SaveLogCommand { get; }
+
+        // 定義對應的事件 (類似硬體中斷旗標)，通知後台執行 UART 動作
+        public event Action OnToggleConnectionRequested;
+        public event Action OnClearLogRequested;
+        public event Action OnSaveLogRequested;
 
         // 【新增】：用來存放所有解析出來的 TPMS 裝置，UI 會自動把這個清單畫成卡片
         public ObservableCollection<TpmsDevice> Devices { get; set; } = new ObservableCollection<TpmsDevice>();
