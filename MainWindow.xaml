@@ -52,7 +52,8 @@
 
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
                     <TextBlock Text="顯示時間：" VerticalAlignment="Center" FontSize="16" Margin="0,0,10,0"/>
-                    <ToggleButton x:Name="ShowTimeToggle" Style="{StaticResource MaterialDesignSwitchToggleButton}"/>
+                    <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"  
+                                           IsChecked="{Binding IsShowTime}"/>
 
                     <Button x:Name="ActionBtn" Style="{StaticResource MaterialDesignRaisedButton}"
                        Command="{Binding ToggleConnectionCommand}" Height="40" Margin="10,10,10,5">

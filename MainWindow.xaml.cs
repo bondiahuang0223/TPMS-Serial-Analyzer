@@ -31,7 +31,7 @@ namespace WpfMaterialHello
         private SerialPort _serialPort;
         private StringBuilder _rxBuffer = new StringBuilder();
         private readonly object _bufferLock = new object(); // 用來保護 Buffer 的鎖 (Mutex)
-        private DispatcherTimer _uiUpdateTimer;
+      
 
         public MainWindow()
         {
@@ -41,13 +41,43 @@ namespace WpfMaterialHello
             this.DataContext = _viewModel;
             // --- 訂閱大腦發出的 Command 事件 ---
             _viewModel.OnToggleConnectionRequested += ExecuteToggleConnection;
-            _viewModel.OnClearLogRequested += ExecuteClearLog;
-            _viewModel.OnSaveLogRequested += ExecuteSaveLog;
 
-            // 初始化 UI 更新定時器 (設定為每 500 毫秒觸發一次)
-            _uiUpdateTimer = new DispatcherTimer();
-            _uiUpdateTimer.Interval = TimeSpan.FromMilliseconds(500);
-            _uiUpdateTimer.Tick += UiUpdateTimer_Tick;
+            // 【新增】：訂閱大腦發出的 Log 顯示事件
+ // 【修改】：訂閱大腦發出的 Log 顯示事件，並加入字數上限防護
+            _viewModel.OnLogMessageReceived += (message) =>
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    // 設定 UI Log 上限約 50000 個字元 (約幾百行)
+                    if (UartLogTextBox.Text.Length > 50000)
+                    {
+                        // 刪除前半段 (約 5000 字)，並尋找下一個換行符號以保持句子完整
+                        int cutIndex = UartLogTextBox.Text.IndexOf('\n', 5000);
+                        if (cutIndex >= 0)
+                        {
+                            UartLogTextBox.Text = UartLogTextBox.Text.Substring(cutIndex + 1);
+                        }
+                    }
+
+                    UartLogTextBox.AppendText(message);
+                    UartLogTextBox.ScrollToEnd();
+                });
+            };
+
+            // 【新增】：訂閱大腦發出的清空畫面事件
+            _viewModel.OnLogCleared += () =>
+            {
+                lock (_bufferLock)
+                {
+                    _rxBuffer.Clear();
+                }
+
+                Dispatcher.InvokeAsync(() =>
+                {
+                    UartLogTextBox.Clear();
+                });
+            };
+
         }
         // 當視窗載入完成時，會觸發這個方法
         private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -67,6 +97,22 @@ namespace WpfMaterialHello
             {
                 source.AddHook(WndProc);
             }
+        }
+
+        // 覆寫視窗關閉事件，確保徹底釋放 COM Port
+        protected override void OnClosed(EventArgs e)
+        {
+            if (_serialPort != null)
+            {
+                if (_serialPort.IsOpen)
+                {
+                    // 為了避免死鎖，先解除綁定接收事件，再關閉 Port
+                    _serialPort.DataReceived -= SerialPort_DataReceived;
+                    _serialPort.Close();
+                }
+                _serialPort.Dispose();
+            }
+            base.OnClosed(e);
         }
 
         // 這就是負責接收所有 Windows 系統訊息的攔截器
@@ -105,7 +151,7 @@ namespace WpfMaterialHello
 
                     _serialPort.DataReceived += SerialPort_DataReceived;
                     _serialPort.Open();
-                    _uiUpdateTimer.Start();
+                    
 
                     // 修改按鈕內的文字 (不影響 Icon)
                     _viewModel.ActionBtnText = "關閉連線";
@@ -120,7 +166,7 @@ namespace WpfMaterialHello
             else
             {
                 // 【執行斷線】
-                _uiUpdateTimer.Stop();
+                
                 _serialPort.DataReceived -= SerialPort_DataReceived;
                 _serialPort.Close();
 
@@ -135,160 +181,50 @@ namespace WpfMaterialHello
         {
             try
             {
-                // 一次把目前硬體 FIFO 裡的字串全讀出來
                 string newData = _serialPort.ReadExisting();
 
-                // 進入臨界區 (Critical Section)，鎖住 Buffer 寫入資料
                 lock (_bufferLock)
                 {
                     _rxBuffer.Append(newData);
+
+                    string currentBuffer = _rxBuffer.ToString();
+                    int newlineIndex;
+
+                    // 只要 Buffer 內有換行符號，就立刻切出一行處理
+                    while ((newlineIndex = currentBuffer.IndexOf('\n')) >= 0)
+                    {
+                        string line = currentBuffer.Substring(0, newlineIndex).Trim();
+                        _rxBuffer.Remove(0, newlineIndex + 1);
+                        currentBuffer = _rxBuffer.ToString();
+
+                        if (string.IsNullOrEmpty(line)) continue;
+
+                        // 1. 在收到完整一行的瞬間，立刻打上最高精度的毫秒時間戳記
+                        string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
+                       //string taggedLine = $"[{timeStamp}] {line}";
+
+                        // 2. 拋給大腦處理 (使用 InvokeAsync 避免卡死 SerialPort 接收執行緒)
+                        Dispatcher.InvokeAsync(() =>
+                        {
+                            _viewModel.ProcessRealTimeData(line, timeStamp);
+                        });
+                    }
                 }
             }
             catch (Exception ex)
             {
-                // 處理可能發生的通訊例外 (例如裝置突然拔除)
-                Dispatcher.Invoke(() => MessageBox.Show($"接收錯誤: {ex.Message}"));
+                Dispatcher.InvokeAsync(() => MessageBox.Show($"接收錯誤: {ex.Message}"));
             }
         }
 
-        // 相當於 Main Loop 定時檢查 Buffer (注意：這是在 UI 執行緒執行的！)
-        private void UiUpdateTimer_Tick(object sender, EventArgs e)
-        {
-            string dataToDisplay = null;
-
-            // 進入臨界區，檢查並抽許資料
-            lock (_bufferLock)
-            {
-                if (_rxBuffer.Length > 0)
-                {
-                    string currentBuffer = _rxBuffer.ToString();
-
-                    // 尋找最後一個換行符號的位置
-                    int lastNewlineIndex = currentBuffer.LastIndexOf('\n');
-
-                    if (lastNewlineIndex >= 0)
-                    {
-                        // 擷取到最後一個 \n 的部分 (包含 \n 本身)
-                        int extractLength = lastNewlineIndex + 1;
-                        dataToDisplay = currentBuffer.Substring(0, extractLength);
-
-                        // 將已經擷取出來的部分，從 Buffer 中刪除 (類似清除已讀取的 Ring Buffer)
-                        _rxBuffer.Remove(0, extractLength);
-                    }
-                }
-            }
-
-            // 如果有抽取出完整的字串，就更新到 UI 的 TextBox 上
-            if (!string.IsNullOrEmpty(dataToDisplay))
-            {
-                // 【優化】：將字串依換行符號切開，逐行交給大腦解析，確保不漏接任何一顆輪胎的封包
-                string[] lines = dataToDisplay.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                // 判斷是否開啟「顯示時間」
-                bool isShowTime = (ShowTimeToggle.IsChecked == true);
-
-                // 取得當下的時間
-                string timeStamp = DateTime.Now.ToString("HH:mm:ss.ff");
-
-
-                foreach (string line in lines)
-                {
-                    _viewModel.ParseUARTString(line);
-
-                    if (isShowTime)
-                    {
-                        UartLogTextBox.AppendText($"[{timeStamp}] {line}\n");
-                    }
-                    else
-                    {
-                        UartLogTextBox.AppendText($"{line}\n");
-                    }
-                }
-
-
-
-                UartLogTextBox.ScrollToEnd();
-            }
-        }
+  
         // 將 Hex 字串轉換為 Byte 陣列的工具函式
 
 
         // ---------------------------------------------------------
         // 儲存 Log 按鈕事件
         // ---------------------------------------------------------
-        private void ExecuteSaveLog()
-        {
-            if (string.IsNullOrEmpty(UartLogTextBox.Text))
-            {
-                MessageBox.Show("目前沒有任何資料可以儲存！", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            SaveFileDialog saveFileDialog = new SaveFileDialog
-            {
-                Title = "匯出 CSV 測試數據",
-                Filter = "CSV 檔案 (*.csv)|*.csv",
-                FileName = $"TPMS_Data_{DateTime.Now:yyyyMMdd_HHmmss}.csv"
-            };
-
-            if (saveFileDialog.ShowDialog() == true)
-            {
-                try
-                {
-                    StringBuilder csv = new StringBuilder();
-                    // 加入 CSV 標題列 (特意將 Format 1 與 Format 2 的欄位對齊)
-                    csv.AppendLine("Time,MAC,Pressure(kPa),Temp(C),Voltage(mV),Mileage(km),Revolution(us),Footprint(us),Cnt,RSSI(dBm)");
-
-                    // 逐行讀取目前的 Log 視窗
-                    string[] lines = UartLogTextBox.Text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-                    foreach (string line in lines)
-                    {
-                        // 忽略連線狀態等非數據行
-                        if (!line.Contains("ec:")) continue;
-
-                        // 擷取通用欄位
-                        string time = Regex.Match(line, @"\[(.*?)\]").Groups[1].Value;
-                        string mac = Regex.Match(line, @"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})", RegexOptions.IgnoreCase).Value;
-                        string cnt = Regex.Match(line, @"Cnt:\s*(\d+)").Groups[1].Value;
-                        string rssi = Regex.Match(line, @"(-\d+)\s*dbm", RegexOptions.IgnoreCase).Groups[1].Value;
-
-                        // 擷取 Format 1 欄位
-                        string pressure = Regex.Match(line, @"Pressure:\s*(\d+)").Groups[1].Value;
-                        string temp = Regex.Match(line, @"Temperature:\s*(-?\d+)").Groups[1].Value;
-                        string voltage = Regex.Match(line, @"Voltage:\s*(\d+)").Groups[1].Value;
-                        string mileage = Regex.Match(line, @"Mileage:\s*(\d+)").Groups[1].Value;
-
-                        // 擷取 Format 2 欄位
-                        string rev = Regex.Match(line, @"Revolution:\s*(\d+)").Groups[1].Value;
-                        string foot = Regex.Match(line, @"Footprint:\s*(\d+)").Groups[1].Value;
-
-                        // 組裝單列，Format 1 沒有的週期資料會自動留空，反之亦然
-                        csv.AppendLine($"{time},{mac},{pressure},{temp},{voltage},{mileage},{rev},{foot},{cnt},{rssi}");
-                    }
-
-                    File.WriteAllText(saveFileDialog.FileName, csv.ToString());
-                    MessageBox.Show($"CSV 已成功儲存至：\n{saveFileDialog.FileName}", "完成", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"儲存檔案時發生錯誤：\n{ex.Message}", "錯誤", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-        }
-        // ---------------------------------------------------------
-        // 清除 Log 按鈕事件
-        // ---------------------------------------------------------
-        private void ExecuteClearLog()
-        {
-            // 清空畫面上的文字
-            UartLogTextBox.Clear();
-
-            // 為了確保 Buffer 的資料也乾淨，建議一併清空我們在背景使用的 StringBuilder
-            lock (_bufferLock)
-            {
-                _rxBuffer.Clear();
-            }
-        }
+ 
 
 
     }
