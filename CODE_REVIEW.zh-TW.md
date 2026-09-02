@@ -1,16 +1,22 @@
 # WpfMaterialHello Code Review
 
-審查日期：2026-08-31  
-範圍：目前工作目錄的程式碼，包含尚未提交的 `MainViewModel.cs` 與 `MainWindow.xaml.cs` 變更。此文件只記錄問題與建議，沒有改動產品程式碼。
+## 2026-09-02 更新
 
-## 驗證結果
+- 執行 `dotnet build WpfMaterialHello.csproj --no-restore`：**0 errors、0 warnings**。
+- 以下原始優先修正表完整保留，避免遺失既有 P1/P2/P3 的背景、影響與建議。
+- 已完成：清除 Log 同步清除 `_rxBuffer`、時間顯示開關、CSV 滿額單次警告、nullable 警告、未使用事件、COM/baud 連線中停用、連線中不刷新已選 Port、RX buffer 上限，以及本輪 P1/P2。
 
-- 使用 .NET SDK 對暫存輸出位置執行完整重建：**0 errors**。
-- 重建輸出有 **54 warnings**；WPF 的暫存編譯專案與正式專案重複報告同一批警告，因此實質上是約 27 個原始碼警告。
-- 正常 `dotnet build` 的預設輸出 `bin/Debug/net8.0-windows/WpfMaterialHello.exe` 正被執行中的程式鎖住；沒有關閉該程式，以免中斷使用者工作。
-- 未發現自動化測試專案，因此尚未驗證實體 UART、裝置拔除與 CSV 檔案輸出的執行期行為。
+### 本輪修正確認與保留事項
 
-## 優先修正
+| 優先 | 問題 | 影響與證據 | 建議 |
+| --- | --- | --- | --- |
+| P1（已修正） | 剛連線時可能漏掉第一批 UART 資料 | `_serialPort` 現在會在 `Open()` 前指向 `tempPort`，因此剛開啟時的 `DataReceived` 可通過目前連線驗證。開啟失敗時會解除事件、Dispose，並清回 `_serialPort`。 | 已由程式碼審查與建置確認；仍建議以「開啟後只傳一次資料」的實體 UART 測試驗證。 |
+| P2（已修正） | 正常斷線可能顯示「接收錯誤」對話框 | `ReadExisting()` 例外時，若 port 已關閉或不再是目前連線，會直接略過，不顯示錯誤對話框。 | 已由程式碼審查與建置確認；仍建議以快速斷線、重連與拔除裝置進行硬體驗證。 |
+| P3（接受，不修改） | 3 處 trailing whitespace | `MainWindow.xaml.cs` 的行尾含空白字元。程式行為不受影響，但 `git diff --check` 會回報格式問題。 | 依目前決定保留，不作修改。 |
+
+## 2026-08-31 原始優先修正（完整保留）
+
+下表是原始審查的完整說明；項目是否已修正，以本文件頂端的 2026-09-02 更新為準。
 
 | 優先 | 問題 | 影響與證據 | 建議 |
 | --- | --- | --- | --- |
@@ -26,24 +32,10 @@
 | P3 | 無用成員與範本檔 | `OnClearLogRequested`、`OnSaveLogRequested` 不再被使用；`Class1`、`Class2`、`Interface1`、`Component1` 目前也無產品用途。 | 在 Git 提交前確認沒有外部使用，再刪除或寫明保留原因。 |
 | P3 | 荷重計算有未使用變數及未校正常數 | `contactLength` 算出後未使用；`tireRadius`、`constantK` 是假設值。`TpmsDevice.cs:38-55` | 移除未使用變數，或顯示/紀錄接地長度；將常數移至可設定且附單位、校正依據的設定模型。 |
 
-## 編譯警告分類
+## 原始限制與建議（保留）
 
-1. `CS8618`：非 nullable 欄位或事件在建構子結束時可能仍為 null。例如 `_serialPort`、`_selectedPort`、`TpmsDevice` 的字串欄位與各事件。
-2. `CS8612` / `CS8767`：實作 `INotifyPropertyChanged`、`ICommand` 時，事件或 `object` 參數少了 `?`，與 .NET 介面宣告不一致。
-3. `CS8625`：`string propertyName = null` 與 nullable 設定衝突，應是 `string? propertyName = null`。
-4. `CS0067`：已不再訂閱/觸發的 `OnClearLogRequested`、`OnSaveLogRequested`。
-
-## 非問題，但需要知道的限制
-
-- CSV 欄位目前都從數字/MAC Regex 擷取，短期內不會有逗號跳脫問題；若日後加入原始文字欄位，必須使用標準 CSV escaping。
-- `DataReceived` 不保證每次事件是一行資料。使用 `StringBuilder` 累積並依 `\n` 切行是正確的基本方向。
-- `SerialPort` 裝置被拔除時可能在 `ReadExisting`、`Close`、`Dispose` 發生例外；需以硬體測試驗證錯誤 UI 和重連策略。
+- CSV 欄位目前都從數字/MAC Regex 擷取；日後若加入原始文字欄位，必須使用標準 CSV escaping。
+- `DataReceived` 不保證每次事件是一行資料；使用 `StringBuilder` 累積並依 `\\n` 切行是正確的基本方向。
+- `SerialPort` 裝置被拔除時可能在 `ReadExisting`、`Close`、`Dispose` 發生例外，仍需以硬體測試驗證錯誤 UI 和重連策略。
 - 卡片上限 20 筆是以插入順序刪除最舊項目，而不是依最後更新時間排序；是否符合需求需先確認。
-
-## 建議修正順序
-
-1. 寫一個不依賴實體硬體的「清除時 buffer 為空」測試或最小手動再現步驟，修 P0 buffer 問題。
-2. 決定時間顯示的產品規格，修 P0 開關問題。
-3. 修 nullable 與未使用事件，讓建置警告為 0。
-4. 修 CSV 滿額一次性告警與命令 `CanExecute`。
-5. 以小步提交把 UART / 對話框責任抽到 service，補上 parser 與 CSV 的單元測試。
+- 後續應補上 parser、CSV buffer 與連線狀態的單元測試；目前尚無自動化測試專案。

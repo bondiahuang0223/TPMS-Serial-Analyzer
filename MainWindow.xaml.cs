@@ -28,7 +28,7 @@ namespace WpfMaterialHello
         private const int WM_DEVICECHANGE = 0x0219;
         private MainViewModel _viewModel;
         // --- SerialPort 與 Buffer 相關變數 ---
-        private SerialPort _serialPort;
+        private SerialPort? _serialPort;
         private StringBuilder _rxBuffer = new StringBuilder();
         private readonly object _bufferLock = new object(); // 用來保護 Buffer 的鎖 (Mutex)
       
@@ -90,7 +90,7 @@ namespace WpfMaterialHello
             base.OnSourceInitialized(e);
 
             // 取得這個 WPF 視窗在作業系統底層的 Handle (控制代碼)
-            HwndSource source = PresentationSource.FromVisual(this) as HwndSource;
+            HwndSource? source = PresentationSource.FromVisual(this) as HwndSource;
 
             // 將我們自訂的訊息攔截器 (WndProc) 掛載上去
             if (source != null)
@@ -98,20 +98,37 @@ namespace WpfMaterialHello
                 source.AddHook(WndProc);
             }
         }
-
+        private void SafeCloseSerialPort()
+        {
+            try
+            {
+                if (_serialPort != null)
+                {
+                    _serialPort.DataReceived -= SerialPort_DataReceived;
+                    if (_serialPort.IsOpen)
+                    {
+                        _serialPort.Close();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.InvokeAsync(() => UartLogTextBox.AppendText($"[系統提示] 硬體資源釋放異常: {ex.Message}\n"));
+            }
+            finally
+            {
+                if (_serialPort != null)
+                {
+                    // 針對 Dispose 追加獨立防護
+                    try { _serialPort.Dispose(); } catch { }
+                    _serialPort = null;
+                }
+            }
+        }
         // 覆寫視窗關閉事件，確保徹底釋放 COM Port
         protected override void OnClosed(EventArgs e)
         {
-            if (_serialPort != null)
-            {
-                if (_serialPort.IsOpen)
-                {
-                    // 為了避免死鎖，先解除綁定接收事件，再關閉 Port
-                    _serialPort.DataReceived -= SerialPort_DataReceived;
-                    _serialPort.Close();
-                }
-                _serialPort.Dispose();
-            }
+            SafeCloseSerialPort();
             base.OnClosed(e);
         }
 
@@ -136,80 +153,61 @@ namespace WpfMaterialHello
         {
             if (_viewModel.ActionBtnText == "開啟連線")
             {
-                // 【執行連線】
-                string selectedPort = _viewModel.SelectedPort;
-                if (string.IsNullOrWhiteSpace(selectedPort) || selectedPort.Contains("未偵測"))
-                {
-                    MessageBox.Show("請先選擇一個有效的 COM Port！", "錯誤");
-                    return;
-                }
+                string? selectedPort = _viewModel.SelectedPort;
+                if (string.IsNullOrWhiteSpace(selectedPort) || selectedPort.Contains("未偵測")) return;
 
+                // 使用區域變數先行測試，成功才接管
+                SerialPort tempPort = new SerialPort(selectedPort, _viewModel.SelectedBaudRate, Parity.None, 8, StopBits.One);
+                tempPort.DataReceived += SerialPort_DataReceived;
+                _serialPort = tempPort;
                 try
                 {
-                    // 【修正】：將 115200 替換為 _viewModel.SelectedBaudRate
-                    _serialPort = new SerialPort(selectedPort, _viewModel.SelectedBaudRate, Parity.None, 8, StopBits.One);
-
-                    _serialPort.DataReceived += SerialPort_DataReceived;
-                    _serialPort.Open();
+                    tempPort.Open();
+                   
                     
 
-                    // 修改按鈕內的文字 (不影響 Icon)
                     _viewModel.ActionBtnText = "關閉連線";
                     PortComboBox.IsEnabled = false;
+                    // 若鮑率下拉選單有命名，請一併停用，例如：BaudRateComboBox.IsEnabled = false;
+                    if (BaudRateComboBox != null) BaudRateComboBox.IsEnabled = false;
                     UartLogTextBox.AppendText($"--- 已連線至 {selectedPort} ---\n");
                 }
                 catch (Exception ex)
                 {
+                    tempPort.DataReceived -= SerialPort_DataReceived;
+                    tempPort.Dispose();
+                    _serialPort = null;
                     MessageBox.Show($"無法開啟 {selectedPort}:\n{ex.Message}", "連線失敗");
                 }
             }
             else
             {
-                // 【執行斷線】(包含硬體被實體拔除的救援狀態)
-                try
-                {
-                    if (_serialPort != null)
-                    {
-                        // 先解除綁定，防止在 Close() 瞬間還有中斷發生
-                        _serialPort.DataReceived -= SerialPort_DataReceived;
-
-                        if (_serialPort.IsOpen)
-                        {
-                            _serialPort.Close();
-                        }
-                        _serialPort.Dispose();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // 硬體被強拔時呼叫 Close() 可能會報錯，直接攔截讓程式安全下莊
-                    UartLogTextBox.AppendText($"[系統提示] 硬體資源釋放異常 (可能已拔除)\n");
-                }
-                finally
-                {
-                    // 無論硬體是正常關閉還是被拔除，finally 保證 UI 狀態絕對會恢復
-                    _serialPort = null;
-                    _viewModel.ActionBtnText = "開啟連線";
-                    PortComboBox.IsEnabled = true;
-                    UartLogTextBox.AppendText($"--- 已中斷連線 ---\n");
-                }
+                SafeCloseSerialPort();
+                _viewModel.ActionBtnText = "開啟連線";
+                PortComboBox.IsEnabled = true;
+                if (BaudRateComboBox != null) BaudRateComboBox.IsEnabled = true;
+                UartLogTextBox.AppendText($"--- 已中斷連線 ---\n");
             }
         }
         // 相當於 RX Interrupt (注意：這是在背景執行緒執行的！)
-        private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
+ private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
+            // 驗證 sender，防止快速重連時讀到舊事件的髒資料
+            SerialPort? sp = sender as SerialPort;
+            if (sp == null || sp != _serialPort || !sp.IsOpen) return;
+
             try
             {
-                string newData = _serialPort.ReadExisting();
+                string newData = sp.ReadExisting();
 
                 lock (_bufferLock)
                 {
                     _rxBuffer.Append(newData);
 
+
+
                     string currentBuffer = _rxBuffer.ToString();
                     int newlineIndex;
-
-                    // 只要 Buffer 內有換行符號，就立刻切出一行處理
                     while ((newlineIndex = currentBuffer.IndexOf('\n')) >= 0)
                     {
                         string line = currentBuffer.Substring(0, newlineIndex).Trim();
@@ -217,21 +215,27 @@ namespace WpfMaterialHello
                         currentBuffer = _rxBuffer.ToString();
 
                         if (string.IsNullOrEmpty(line)) continue;
-
-                        // 1. 在收到完整一行的瞬間，立刻打上最高精度的毫秒時間戳記
+                        
                         string timeStamp = DateTime.Now.ToString("HH:mm:ss.fff");
-                       //string taggedLine = $"[{timeStamp}] {line}";
-
-                        // 2. 拋給大腦處理 (使用 InvokeAsync 避免卡死 SerialPort 接收執行緒)
-                        Dispatcher.InvokeAsync(() =>
-                        {
-                            _viewModel.ProcessRealTimeData(line, timeStamp);
-                        });
+                        Dispatcher.InvokeAsync(() => _viewModel.ProcessRealTimeData(line, timeStamp));
                     }
+
+                    // 緩衝區溢位防護 (避免無 \n 導致記憶體耗盡)
+                    if (_rxBuffer.Length > 4096)
+                    {
+                        _rxBuffer.Clear();
+                        Dispatcher.InvokeAsync(() => _viewModel.ProcessRealTimeData("[系統警告] UART 緩衝區無效累積，已強制清空重置", DateTime.Now.ToString("HH:mm:ss.fff")));
+                     
+                    }
+
                 }
             }
             catch (Exception ex)
             {
+                if (_serialPort == null || !sp.IsOpen)
+                {
+                    return;
+                }
                 Dispatcher.InvokeAsync(() => MessageBox.Show($"接收錯誤: {ex.Message}"));
             }
         }

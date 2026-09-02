@@ -5,26 +5,26 @@ namespace WpfMaterialHello
 {
     public class TpmsDevice : INotifyPropertyChanged
     {
-        private string _pressure;
-        private string _temp;
-        private string _voltage;
-        private string _mileage;
-        private string _revolution;
-        private string _footprint;
-        private string _time;
+        private string? _pressure;
+        private string? _temp;
+        private string? _voltage;
+        private string? _mileage;
+        private string? _revolution;
+        private string? _footprint;
+        private string? _time;
 
-        public string Mac { get; set; }
+        public string Mac { get; set; } = string.Empty;
 
-        public string Pressure { get => _pressure; set { _pressure = value; OnPropertyChanged(); UpdateLoadEstimation(); } }
-        public string Temp { get => _temp; set { _temp = value; OnPropertyChanged(); } }
+        public string? Pressure { get => _pressure; set { _pressure = value; OnPropertyChanged(); UpdateLoadEstimation(); } }
+        public string? Temp { get => _temp; set { _temp = value; OnPropertyChanged(); } }
 
         // 電壓改為只存數值供背景判斷，不再直接綁定到 UI 顯示大字
-        public string Voltage { get => _voltage; set { _voltage = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsLowVoltage)); } }
+        public string? Voltage { get => _voltage; set { _voltage = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsLowVoltage)); } }
 
-        public string Mileage { get => _mileage; set { _mileage = value; OnPropertyChanged(); } }
-        public string Revolution { get => _revolution; set { _revolution = value; OnPropertyChanged(); UpdateLoadEstimation(); } }
-        public string Footprint { get => _footprint; set { _footprint = value; OnPropertyChanged(); UpdateLoadEstimation(); } }
-        public string Time { get => _time; set { _time = value; OnPropertyChanged(); } }
+        public string? Mileage { get => _mileage; set { _mileage = value; OnPropertyChanged(); } }
+        public string? Revolution { get => _revolution; set { _revolution = value; OnPropertyChanged(); UpdateLoadEstimation(); } }
+        public string? Footprint { get => _footprint; set { _footprint = value; OnPropertyChanged(); UpdateLoadEstimation(); } }
+        public string? Time { get => _time; set { _time = value; OnPropertyChanged(); } }
 
         // 低電壓告警：協定指出 Format 1 的 Status Bit[0]=1 代表低於 2.3V，
         // 這裡我們直接用數值判斷 (低於 2300mV 觸發)
@@ -55,8 +55,8 @@ namespace WpfMaterialHello
             }
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }

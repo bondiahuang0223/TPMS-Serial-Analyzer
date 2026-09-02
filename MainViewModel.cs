@@ -18,15 +18,15 @@ namespace WpfMaterialHello
         private StringBuilder _csvBuffer = new StringBuilder();
         private bool _isCsvBufferFullWarningSent = false;
         // 宣告讓 UI 訂閱的事件通道
-        public event Action<string> OnLogMessageReceived;
-        public event Action OnLogCleared;
+        public event Action<string>? OnLogMessageReceived;
+        public event Action? OnLogCleared;
         // 【關鍵武器 1】：ObservableCollection
         // 它就像是一個會自動廣播的 List。當你對它 Add 或 Clear 時，畫面會自動更新！
         public ObservableCollection<string> AvailablePorts { get; set; }
 
         // 【關鍵武器 2】：儲存使用者目前選到的 Port
-        private string _selectedPort;
-        public string SelectedPort
+        private string? _selectedPort;
+        public string? SelectedPort
         {
             get { return _selectedPort; }
             set
@@ -85,8 +85,9 @@ namespace WpfMaterialHello
         // 負責更新 COM Port 清單的核心邏輯
         public void RefreshPorts()
         {
+            if (ActionBtnText == "關閉連線") return;
             // 先記住目前選的名字，避免刷新後跑掉
-            string currentSelection = SelectedPort;
+            string? currentSelection = SelectedPort;
 
             string[] ports = SerialPort.GetPortNames();
 
@@ -101,7 +102,7 @@ namespace WpfMaterialHello
                 }
 
                 // 恢復選擇狀態
-                if (AvailablePorts.Contains(currentSelection))
+                if (currentSelection != null && AvailablePorts.Contains(currentSelection))
                     SelectedPort = currentSelection;
                 else
                     SelectedPort = AvailablePorts[0];
@@ -135,9 +136,8 @@ namespace WpfMaterialHello
         public ICommand SaveLogCommand { get; }
 
         // 定義對應的事件 (類似硬體中斷旗標)，通知後台執行 UART 動作
-        public event Action OnToggleConnectionRequested;
-        public event Action OnClearLogRequested;
-        public event Action OnSaveLogRequested;
+        public event Action? OnToggleConnectionRequested;
+
 
         // 【新增】：用來存放所有解析出來的 TPMS 裝置，UI 會自動把這個清單畫成卡片
         public ObservableCollection<TpmsDevice> Devices { get; set; } = new ObservableCollection<TpmsDevice>();
@@ -297,8 +297,8 @@ namespace WpfMaterialHello
 
 
         // --- INotifyPropertyChanged 標準實作 ---
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
