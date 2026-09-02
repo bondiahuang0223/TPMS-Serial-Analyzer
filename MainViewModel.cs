@@ -63,13 +63,13 @@ namespace WpfMaterialHello
             // 1. 連線按鈕：必須有選 COM Port，且不能是 "未偵測..."
             ToggleConnectionCommand = new RelayCommand(
                 _ => OnToggleConnectionRequested?.Invoke(),
-                _ => !string.IsNullOrWhiteSpace(SelectedPort) && !SelectedPort.Contains("未偵測")
+                _ => ActionBtnText == "關閉連線" || (!string.IsNullOrWhiteSpace(SelectedPort) && !SelectedPort.Contains("未偵測"))
             );
 
             // 2. 清除按鈕：背景 CSV 資料庫長度大於標題列 (約 150 字元) 時才可按
             ClearLogCommand = new RelayCommand(
-                _ => ExecuteClearLog(),
-                _ => _csvBuffer != null && _csvBuffer.Length > 150
+                _ => ExecuteClearLog()
+                
             );
 
             // 3. 儲存按鈕：條件與清除按鈕相同

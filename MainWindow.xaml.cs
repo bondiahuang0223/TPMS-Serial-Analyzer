@@ -134,7 +134,7 @@ namespace WpfMaterialHello
         // 按鈕點擊事件
         private void ExecuteToggleConnection()
         {
-            if (_serialPort == null || !_serialPort.IsOpen)
+            if (_viewModel.ActionBtnText == "開啟連線")
             {
                 // 【執行連線】
                 string selectedPort = _viewModel.SelectedPort;
@@ -165,15 +165,34 @@ namespace WpfMaterialHello
             }
             else
             {
-                // 【執行斷線】
-                
-                _serialPort.DataReceived -= SerialPort_DataReceived;
-                _serialPort.Close();
+                // 【執行斷線】(包含硬體被實體拔除的救援狀態)
+                try
+                {
+                    if (_serialPort != null)
+                    {
+                        // 先解除綁定，防止在 Close() 瞬間還有中斷發生
+                        _serialPort.DataReceived -= SerialPort_DataReceived;
 
-                // 恢復按鈕文字
-                _viewModel.ActionBtnText = "開啟連線";
-                PortComboBox.IsEnabled = true;
-                UartLogTextBox.AppendText($"--- 已中斷連線 ---\n");
+                        if (_serialPort.IsOpen)
+                        {
+                            _serialPort.Close();
+                        }
+                        _serialPort.Dispose();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 硬體被強拔時呼叫 Close() 可能會報錯，直接攔截讓程式安全下莊
+                    UartLogTextBox.AppendText($"[系統提示] 硬體資源釋放異常 (可能已拔除)\n");
+                }
+                finally
+                {
+                    // 無論硬體是正常關閉還是被拔除，finally 保證 UI 狀態絕對會恢復
+                    _serialPort = null;
+                    _viewModel.ActionBtnText = "開啟連線";
+                    PortComboBox.IsEnabled = true;
+                    UartLogTextBox.AppendText($"--- 已中斷連線 ---\n");
+                }
             }
         }
         // 相當於 RX Interrupt (注意：這是在背景執行緒執行的！)
