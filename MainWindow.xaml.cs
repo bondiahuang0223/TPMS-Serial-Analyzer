@@ -146,7 +146,7 @@ namespace WpfMaterialHello
             }
 
             return IntPtr.Zero;
-        }        // 獨立出一個方法來載入 COM Port，方便以後按下「重新整理」按鈕時也可以呼叫
+        }       
 
         // 按鈕點擊事件
         private void ExecuteToggleConnection()

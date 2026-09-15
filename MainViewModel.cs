@@ -40,10 +40,11 @@ namespace WpfMaterialHello
 
 
         // 【新增】：Baud Rate 清單與選擇狀態
-        public ObservableCollection<int> BaudRates { get; set; } = new ObservableCollection<int>
-        {
-            9600, 19200, 38400, 57600, 115200, 256000, 460800, 921600
-        };
+       // public ObservableCollection<int> BaudRates { get; set; } = new ObservableCollection<int>
+       // {
+        //    9600, 19200, 38400, 57600, 115200, 256000, 460800, 921600
+        //};
+        public List<int> BaudRates { get; } = new List<int> { 9600, 19200, 38400, 57600, 115200, 256000, 460800, 921600};
 
         private int _selectedBaudRate = 256000; // 預設給 TPMS 用的 256000
         public int SelectedBaudRate
